@@ -1,0 +1,57 @@
+#!/usr/bin/python2
+
+import os
+import argparse
+import sqlite3
+import subprocess
+import datetime
+
+ap = argparse.ArgumentParser()
+ap.add_argument("-p","--path",    required=True,help="Path you wish to analyse for filetypes.")
+args = vars(ap.parse_args())
+
+
+outputfolder = os.path.join(os.getcwd(),'output')
+if not os.path.exists(outputfolder):
+    os.makedirs(outputfolder)
+
+path = args['path']
+path = os.path.abspath(path)
+database = os.path.join(outputfolder,'finalyze.db')
+if os.path.exists(database):
+    os.remove(database)
+
+now = datetime.datetime.now()
+print "[*] Starting discovery on %s" % now.strftime('%Y-%m-%d %H:%M:%S')
+db     = sqlite3.connect(database)
+db.text_factory = lambda x: unicode(x, 'utf-8', 'ignore')
+
+print "[*] Creating database: finalyze.db"
+cursor = db.cursor()
+print "[*] Creating paths table"
+cursor.execute("CREATE TABLE paths(k TEXT PRIMARY KEY, v TEXT)")
+
+tmpfile = os.path.join(outputfolder,'outputtmp')
+cmd = 'find \'%s\' -print > \'%s\'' % (path,tmpfile)
+print "[*] executing: %s" % cmd
+subprocess.call(cmd,shell=True)
+with open(tmpfile,'r') as f:
+    for line in f:
+        info_path = line.strip()
+        info_type = subprocess.check_output(['file',info_path])
+        info_type = info_type.split(':').pop().strip()
+        cmd = "INSERT INTO paths(k,v) VALUES(?,?)"
+        print "[*] INSERTING VALUES(%s,%s)" % (info_path,info_type)
+        cursor.execute(cmd, (info_path,info_type))
+
+os.remove(tmpfile)
+
+# Save (commit) the changes
+db.commit()
+
+# We can also close the connection if we are done with it.
+# Just be sure any changes have been committed or they will be lost.
+db.close()
+
+now = datetime.datetime.now()
+print "[*] Ended on %s" % now.strftime('%Y-%m-%d %H:%M:%S')
